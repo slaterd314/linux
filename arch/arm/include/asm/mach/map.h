@@ -1,11 +1,8 @@
+/* SPDX-License-Identifier: GPL-2.0-only */
 /*
  *  arch/arm/include/asm/map.h
  *
  *  Copyright (C) 1999-2000 Russell King
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
  *
  *  Page table mapping constructs and function prototypes
  */
@@ -21,15 +18,16 @@ struct map_desc {
 	unsigned int type;
 };
 
-/* types 0-3 are defined in asm/io.h */
+/* types 0-4 are defined in asm/io.h */
 enum {
-	MT_UNCACHED = 4,
+	MT_UNCACHED = 5,
 	MT_CACHECLEAN,
 	MT_MINICLEAN,
 	MT_LOW_VECTORS,
 	MT_HIGH_VECTORS,
 	MT_MEMORY_RWX,
 	MT_MEMORY_RW,
+	MT_MEMORY_RO,
 	MT_ROM,
 	MT_MEMORY_RWX_NONCACHED,
 	MT_MEMORY_RW_DTCM,

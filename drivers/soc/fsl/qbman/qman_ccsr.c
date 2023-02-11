@@ -1,4 +1,5 @@
 /* Copyright 2008 - 2016 Freescale Semiconductor, Inc.
+ * Copyright 2020 Puresoftware Ltd.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -28,6 +29,7 @@
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+#include <linux/acpi.h>
 #include "qman_priv.h"
 
 u16 qman_ip_rev;
@@ -252,10 +254,18 @@ static const struct qman_error_info_mdata error_mdata[] = {
 	{ 0x01FF, 24, "FQD cache tag memory 3" },
 	{ 0x0FFF, 512, "FQD cache memory" },
 	{ 0x07FF, 128, "SFDR memory" },
-	{ 0x01FF, 72, "WQ context memory" },
+	{ 0x01FF, 84, "WQ context memory" },
 	{ 0x00FF, 240, "CGR memory" },
 	{ 0x00FF, 302, "Internal Order Restoration List memory" },
-	{ 0x01FF, 256, "SW portal ring memory" },
+	{ 0x7FFF, 256, "SW portal ring memory" },
+	{ 0x07FF, 181, "CEETM class queue descriptor memory" },
+	{ 0x0FFF, 140, "CEETM extended SFDR memory" },
+	{ 0x0FFF, 25, "CEETM logical FQ mapping memory" },
+	{ 0x0FFF, 96, "CEETM dequeue context memory" },
+	{ 0x07FF, 396, "CEETM ccgr memory" },
+	{ 0x00FF, 146, "CEETM CQ channel shaping memory" },
+	{ 0x007F, 256, "CEETM CQ channel scheduling memory" },
+	{ 0x01FF, 88, "CEETM dequeue statistics memory" },
 };
 
 #define QMAN_ERRS_TO_DISABLE (QM_EIRQ_PLWI | QM_EIRQ_PEBI)
@@ -274,6 +284,7 @@ static u32 __iomem *qm_ccsr_start;
 /* A SDQCR mask comprising all the available/visible pool channels */
 static u32 qm_pools_sdqcr;
 static int __qman_probed;
+static int  __qman_requires_cleanup;
 
 static inline u32 qm_ccsr_in(u32 offset)
 {
@@ -340,19 +351,55 @@ static void qm_get_version(u16 *id, u8 *major, u8 *minor)
 }
 
 #define PFDR_AR_EN		BIT(31)
-static void qm_set_memory(enum qm_memory memory, u64 ba, u32 size)
+static int qm_set_memory(enum qm_memory memory, u64 ba, u32 size)
 {
+	void *ptr;
 	u32 offset = (memory == qm_memory_fqd) ? REG_FQD_BARE : REG_PFDR_BARE;
 	u32 exp = ilog2(size);
+	u32 bar, bare;
 
 	/* choke if size isn't within range */
 	DPAA_ASSERT((size >= 4096) && (size <= 1024*1024*1024) &&
 		    is_power_of_2(size));
 	/* choke if 'ba' has lower-alignment than 'size' */
 	DPAA_ASSERT(!(ba & (size - 1)));
+
+	/* Check to see if QMan has already been initialized */
+	bar = qm_ccsr_in(offset + REG_offset_BAR);
+	if (bar) {
+		/* Maker sure ba == what was programmed) */
+		bare = qm_ccsr_in(offset);
+		if (bare != upper_32_bits(ba) || bar != lower_32_bits(ba)) {
+			pr_err("Attempted to reinitialize QMan with different BAR, got 0x%llx read BARE=0x%x BAR=0x%x\n",
+			       ba, bare, bar);
+			return -ENOMEM;
+		}
+		__qman_requires_cleanup = 1;
+		/* Return 1 to indicate memory was previously programmed */
+		return 1;
+	}
+	/* Need to temporarily map the area to make sure it is zeroed */
+	ptr = memremap(ba, size, MEMREMAP_WB);
+	if (!ptr) {
+		pr_crit("memremap() of QMan private memory failed\n");
+		return -ENOMEM;
+	}
+	memset(ptr, 0, size);
+
+#ifdef CONFIG_PPC
+	/*
+	 * PPC doesn't appear to flush the cache on memunmap() but the
+	 * cache must be flushed since QMan does non coherent accesses
+	 * to this memory
+	 */
+	flush_dcache_range((unsigned long) ptr, (unsigned long) ptr+size);
+#endif
+	memunmap(ptr);
+
 	qm_ccsr_out(offset, upper_32_bits(ba));
 	qm_ccsr_out(offset + REG_offset_BAR, lower_32_bits(ba));
 	qm_ccsr_out(offset + REG_offset_AR, PFDR_AR_EN | (exp - 1));
+	return 0;
 }
 
 static void qm_set_pfdr_threshold(u32 th, u8 k)
@@ -455,7 +502,7 @@ RESERVEDMEM_OF_DECLARE(qman_pfdr, "fsl,qman-pfdr", qman_pfdr);
 
 #endif
 
-static unsigned int qm_get_fqid_maxcnt(void)
+unsigned int qm_get_fqid_maxcnt(void)
 {
 	return fqd_sz / 64;
 }
@@ -571,12 +618,19 @@ static int qman_init_ccsr(struct device *dev)
 	int i, err;
 
 	/* FQD memory */
-	qm_set_memory(qm_memory_fqd, fqd_a, fqd_sz);
-	/* PFDR memory */
-	qm_set_memory(qm_memory_pfdr, pfdr_a, pfdr_sz);
-	err = qm_init_pfdr(dev, 8, pfdr_sz / 64 - 8);
-	if (err)
+	err = qm_set_memory(qm_memory_fqd, fqd_a, fqd_sz);
+	if (err < 0)
 		return err;
+	/* PFDR memory */
+	err = qm_set_memory(qm_memory_pfdr, pfdr_a, pfdr_sz);
+	if (err < 0)
+		return err;
+	/* Only initialize PFDRs if the QMan was not initialized before */
+	if (err == 0) {
+		err = qm_init_pfdr(dev, 8, pfdr_sz / 64 - 8);
+		if (err)
+			return err;
+	}
 	/* thresholds */
 	qm_set_pfdr_threshold(512, 64);
 	qm_set_sfdr_threshold(128);
@@ -596,7 +650,7 @@ static int qman_init_ccsr(struct device *dev)
 }
 
 #define LIO_CFG_LIODN_MASK 0x0fff0000
-void qman_liodn_fixup(u16 channel)
+void __qman_liodn_fixup(u16 channel)
 {
 	static int done;
 	static u32 liodn_offset;
@@ -693,6 +747,18 @@ int qman_is_probed(void)
 }
 EXPORT_SYMBOL_GPL(qman_is_probed);
 
+int qman_requires_cleanup(void)
+{
+	return __qman_requires_cleanup;
+}
+
+void qman_done_cleanup(void)
+{
+	qman_enable_irqs();
+	__qman_requires_cleanup = 0;
+}
+
+
 static int fsl_qman_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
@@ -710,6 +776,9 @@ static int fsl_qman_probe(struct platform_device *pdev)
 			node);
 		return -ENXIO;
 	}
+	dev_dbg(dev, "Qman IORESOURCE [%llx] of size [%llx]\n",
+		res->start, resource_size(res));
+
 	qm_ccsr_start = devm_ioremap(dev, res->start, resource_size(res));
 	if (!qm_ccsr_start)
 		return -ENXIO;
@@ -739,6 +808,7 @@ static int fsl_qman_probe(struct platform_device *pdev)
 		qm_channel_pool1 = QMAN_CHANNEL_POOL1_REV3;
 		qm_channel_caam = QMAN_CHANNEL_CAAM_REV3;
 	}
+	dev_dbg(dev, "Qman version:%04x,%02x,%02x\n", id, major, minor);
 
 	if (fqd_a) {
 #ifdef CONFIG_PPC
@@ -756,7 +826,8 @@ static int fsl_qman_probe(struct platform_device *pdev)
 		 * in order to ensure allocations from the correct regions the
 		 * driver initializes then allocates each piece in order
 		 */
-		ret = qbman_init_private_mem(dev, 0, &fqd_a, &fqd_sz);
+		ret = qbman_init_private_mem(dev, 0, &fqd_a, &fqd_sz,
+					     DPAA_QMAN_DEV);
 		if (ret) {
 			dev_err(dev, "qbman_init_private_mem() for FQD failed 0x%x\n",
 				ret);
@@ -767,7 +838,8 @@ static int fsl_qman_probe(struct platform_device *pdev)
 
 	if (!pfdr_a) {
 		/* Setup PFDR memory */
-		ret = qbman_init_private_mem(dev, 1, &pfdr_a, &pfdr_sz);
+		ret = qbman_init_private_mem(dev, 1, &pfdr_a, &pfdr_sz,
+					     DPAA_QMAN_DEV);
 		if (ret) {
 			dev_err(dev, "qbman_init_private_mem() for PFDR failed 0x%x\n",
 				ret);
@@ -838,6 +910,7 @@ static int fsl_qman_probe(struct platform_device *pdev)
 		return ret;
 
 	__qman_probed = 1;
+	dev_dbg(dev, "Qman probed successfully [%d]\n", __qman_probed);
 
 	return 0;
 }
@@ -849,10 +922,16 @@ static const struct of_device_id fsl_qman_ids[] = {
 	{}
 };
 
+static const struct acpi_device_id fsl_qman_acpi_ids[] = {
+	{"NXP0028", 0}
+};
+MODULE_DEVICE_TABLE(acpi, fsl_qman_acpi_ids);
+
 static struct platform_driver fsl_qman_driver = {
 	.driver = {
 		.name = KBUILD_MODNAME,
 		.of_match_table = fsl_qman_ids,
+		.acpi_match_table = ACPI_PTR(fsl_qman_acpi_ids),
 		.suppress_bind_attrs = true,
 	},
 	.probe = fsl_qman_probe,

@@ -2,10 +2,13 @@
 /*
  * Copyright 2013-2014 Freescale Semiconductor, Inc.
  * Copyright 2018 Angelo Dureghello <angelo@sysam.it>
+ * Copyright 2020 NXP
  */
 #ifndef _FSL_EDMA_COMMON_H_
 #define _FSL_EDMA_COMMON_H_
 
+#include <linux/dma-direction.h>
+#include <linux/platform_device.h>
 #include "virt-dma.h"
 
 #define EDMA_CR_EDBG		BIT(1)
@@ -31,7 +34,7 @@
 #define EDMA_TCD_ATTR_DSIZE_16BIT	BIT(0)
 #define EDMA_TCD_ATTR_DSIZE_32BIT	BIT(1)
 #define EDMA_TCD_ATTR_DSIZE_64BIT	(BIT(0) | BIT(1))
-#define EDMA_TCD_ATTR_DSIZE_32BYTE	(BIT(3) | BIT(0))
+#define EDMA_TCD_ATTR_DSIZE_32BYTE	(BIT(2) | BIT(0))
 #define EDMA_TCD_ATTR_SSIZE_8BIT	0
 #define EDMA_TCD_ATTR_SSIZE_16BIT	(EDMA_TCD_ATTR_DSIZE_16BIT << 8)
 #define EDMA_TCD_ATTR_SSIZE_32BIT	(EDMA_TCD_ATTR_DSIZE_32BIT << 8)
@@ -55,6 +58,8 @@
 #define EDMAMUX_CHCFG_SOURCE(n)		((n) & 0x3F)
 
 #define DMAMUX_NR	2
+
+#define EDMA_MINOR_LOOP_TIMEOUT		500 /* us */
 
 #define FSL_EDMA_BUSWIDTHS	(BIT(DMA_SLAVE_BUSWIDTH_1_BYTE) | \
 				 BIT(DMA_SLAVE_BUSWIDTH_2_BYTES) | \
@@ -120,6 +125,11 @@ struct fsl_edma_chan {
 	struct dma_slave_config		cfg;
 	u32				attr;
 	struct dma_pool			*tcd_pool;
+	dma_addr_t			dma_dev_addr;
+	u32				dma_dev_size;
+	enum dma_data_direction		dma_dir;
+	char				chan_name[16];
+	u32				chn_real_count;
 };
 
 struct fsl_edma_desc {
@@ -132,8 +142,19 @@ struct fsl_edma_desc {
 };
 
 enum edma_version {
-	v1, /* 32ch, Vybdir, mpc57x, etc */
+	v1, /* 32ch, Vybrid, mpc57x, etc */
 	v2, /* 64ch Coldfire */
+	v3, /* 32ch, i.mx7ulp */
+};
+
+struct fsl_edma_drvdata {
+	enum edma_version	version;
+	u32			dmamuxs;
+	bool			has_dmaclk;
+	bool			mux_swap;
+	int			(*setup_irq)(struct platform_device *pdev,
+					     struct fsl_edma_engine *fsl_edma);
+	u8			txirq_count;
 };
 
 struct fsl_edma_engine {
@@ -141,12 +162,13 @@ struct fsl_edma_engine {
 	void __iomem		*membase;
 	void __iomem		*muxbase[DMAMUX_NR];
 	struct clk		*muxclk[DMAMUX_NR];
+	struct clk		*dmaclk;
 	struct mutex		fsl_edma_mutex;
+	const struct fsl_edma_drvdata *drvdata;
 	u32			n_chans;
-	int			txirq;
+	int			*txirqs;
 	int			errirq;
 	bool			big_endian;
-	enum edma_version	version;
 	struct edma_regs	regs;
 	struct fsl_edma_chan	chans[];
 };
@@ -163,6 +185,14 @@ static inline u32 edma_readl(struct fsl_edma_engine *edma, void __iomem *addr)
 		return ioread32be(addr);
 	else
 		return ioread32(addr);
+}
+
+static inline u32 edma_readw(struct fsl_edma_engine *edma, void __iomem *addr)
+{
+	if (edma->big_endian)
+		return ioread16be(addr);
+	else
+		return ioread16(addr);
 }
 
 static inline void edma_writeb(struct fsl_edma_engine *edma,
@@ -213,6 +243,7 @@ int fsl_edma_pause(struct dma_chan *chan);
 int fsl_edma_resume(struct dma_chan *chan);
 int fsl_edma_slave_config(struct dma_chan *chan,
 				 struct dma_slave_config *cfg);
+void fsl_edma_get_realcnt(struct fsl_edma_chan *fsl_chan);
 enum dma_status fsl_edma_tx_status(struct dma_chan *chan,
 		dma_cookie_t cookie, struct dma_tx_state *txstate);
 struct dma_async_tx_descriptor *fsl_edma_prep_dma_cyclic(

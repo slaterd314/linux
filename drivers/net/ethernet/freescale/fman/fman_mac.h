@@ -1,5 +1,6 @@
 /*
  * Copyright 2008-2015 Freescale Semiconductor Inc.
+ * Copyright 2020 Puresoftware Ltd.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -202,6 +203,7 @@ struct fman_mac_params {
 	bool basex_if;
 	/* Pointer to TBI/PCS PHY node, used for TBI/PCS PHY access */
 	struct device_node *internal_phy_node;
+	struct fwnode_handle *internal_phy_fwnode;
 };
 
 struct eth_hash_t {
@@ -252,7 +254,7 @@ static inline struct eth_hash_t *alloc_hash_table(u16 size)
 	struct eth_hash_t *hash;
 
 	/* Allocate address hash table */
-	hash = kmalloc_array(size, sizeof(struct eth_hash_t *), GFP_KERNEL);
+	hash = kmalloc(sizeof(*hash), GFP_KERNEL);
 	if (!hash)
 		return NULL;
 

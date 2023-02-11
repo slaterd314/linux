@@ -1,24 +1,20 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 /*
  * Copyright 2012 Freescale Semiconductor, Inc.
  * Copyright 2012 Linaro Ltd.
- *
- * The code contained herein is licensed under the GNU General Public
- * License. You may obtain a copy of the GNU General Public License
- * Version 2 or later at the following locations:
- *
- * http://www.opensource.org/licenses/gpl-license.html
- * http://www.gnu.org/copyleft/gpl.html
  */
 
 #include <linux/clk-provider.h>
+#include <linux/imx_sema4.h>
 #include <linux/io.h>
 #include <linux/slab.h>
 #include <linux/err.h>
+#include <soc/imx/src.h>
 #include "clk.h"
 
 /**
  * struct clk_pfd - IMX PFD clock
- * @clk_hw:	clock source
+ * @hw:		clock source
  * @reg:	PFD register address
  * @idx:	the index of PFD encoded in the register
  *
@@ -38,20 +34,57 @@ struct clk_pfd {
 #define CLR	0x8
 #define OTG	0xc
 
-static int clk_pfd_enable(struct clk_hw *hw)
+static void clk_pfd_do_hardware(struct clk_pfd *pfd, bool enable)
+{
+	if (enable)
+		writel_relaxed(1 << ((pfd->idx + 1) * 8 - 1), pfd->reg + CLR);
+	else
+		writel_relaxed(1 << ((pfd->idx + 1) * 8 - 1), pfd->reg + SET);
+}
+
+static void clk_pfd_do_shared_clks(struct clk_hw *hw, bool enable)
 {
 	struct clk_pfd *pfd = to_clk_pfd(hw);
 
-	writel_relaxed(1 << ((pfd->idx + 1) * 8 - 1), pfd->reg + CLR);
+	if (imx_src_is_m4_enabled() && clk_on_imx6sx()) {
+#ifdef CONFIG_SOC_IMX6SX
+		if (!amp_power_mutex || !shared_mem) {
+			if (enable)
+				clk_pfd_do_hardware(pfd, enable);
+			return;
+		}
+
+		imx_sema4_mutex_lock(amp_power_mutex);
+		if (shared_mem->ca9_valid != SHARED_MEM_MAGIC_NUMBER ||
+			shared_mem->cm4_valid != SHARED_MEM_MAGIC_NUMBER) {
+			imx_sema4_mutex_unlock(amp_power_mutex);
+			return;
+		}
+
+		if (!imx_update_shared_mem(hw, enable)) {
+			imx_sema4_mutex_unlock(amp_power_mutex);
+			return;
+		}
+
+		clk_pfd_do_hardware(pfd, enable);
+
+		imx_sema4_mutex_unlock(amp_power_mutex);
+#endif
+	} else {
+		clk_pfd_do_hardware(pfd, enable);
+	}
+}
+
+static int clk_pfd_enable(struct clk_hw *hw)
+{
+	clk_pfd_do_shared_clks(hw, true);
 
 	return 0;
 }
 
 static void clk_pfd_disable(struct clk_hw *hw)
 {
-	struct clk_pfd *pfd = to_clk_pfd(hw);
-
-	writel_relaxed(1 << ((pfd->idx + 1) * 8 - 1), pfd->reg + SET);
+	clk_pfd_do_shared_clks(hw, false);
 }
 
 static unsigned long clk_pfd_recalc_rate(struct clk_hw *hw,
@@ -127,12 +160,13 @@ static const struct clk_ops clk_pfd_ops = {
 	.is_enabled     = clk_pfd_is_enabled,
 };
 
-struct clk *imx_clk_pfd(const char *name, const char *parent_name,
+struct clk_hw *imx_clk_hw_pfd(const char *name, const char *parent_name,
 			void __iomem *reg, u8 idx)
 {
 	struct clk_pfd *pfd;
-	struct clk *clk;
+	struct clk_hw *hw;
 	struct clk_init_data init;
+	int ret;
 
 	pfd = kzalloc(sizeof(*pfd), GFP_KERNEL);
 	if (!pfd)
@@ -148,10 +182,13 @@ struct clk *imx_clk_pfd(const char *name, const char *parent_name,
 	init.num_parents = 1;
 
 	pfd->hw.init = &init;
+	hw = &pfd->hw;
 
-	clk = clk_register(NULL, &pfd->hw);
-	if (IS_ERR(clk))
+	ret = clk_hw_register(NULL, hw);
+	if (ret) {
 		kfree(pfd);
+		return ERR_PTR(ret);
+	}
 
-	return clk;
+	return hw;
 }
