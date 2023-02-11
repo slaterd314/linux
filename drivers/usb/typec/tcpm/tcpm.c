@@ -5873,6 +5873,13 @@ static void tcpm_init(struct tcpm_port *port)
 		_tcpm_cc_change(port, cc1, cc2);
 
 	/*
+	 * If the device is not self powered, we should not reset the port,
+	 * since this will cause the source to remove vbus power.
+	 */
+	if (port->vbus_present && !port->self_powered)
+		return;
+
+	/*
 	 * Some adapters need a clean slate at startup, and won't recover
 	 * otherwise. So do not try to be fancy and force a clean disconnect.
 	 */
