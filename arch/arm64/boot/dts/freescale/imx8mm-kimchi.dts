@@ -41,7 +41,7 @@
 			no-map;
 		};
 
-		rsc_table: rsc_table@b80ff000 {
+		rsc_table: rsc-table@b80ff000 {
 			reg = <0 0xb80ff000 0 0x1000>;
 			no-map;
 		};
@@ -51,8 +51,8 @@
 			reg = <0 0xb8400000 0 0x100000>;
 			no-map;
 		};
-		
-		rpmsg_reserved: rpmsg@0xb8500000 {
+
+		rpmsg_reserved: rpmsg@b8500000 {
 			no-map;
 			reg = <0 0xb8500000 0 0x400000>;
 		};
@@ -172,7 +172,7 @@
 		mboxes = <&mu 0 1
 			  &mu 1 1
 			  &mu 3 1>;
-		memory-region = <&vdevbuffer>, <&vdev0vring0>, <&vdev0vring1>, <&rsc_table>;
+		memory-region = <&vdevbuffer>, <&vdev0vring0>, <&vdev0vring1>, <&rsc_table>, <&m4_reserved>;
 		syscon = <&src>;
 		fsl,startup-delay-ms = <500>;
 	};
@@ -503,6 +503,14 @@
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_i2c4>;
 	status = "okay";
+};
+
+&pwm4 {
+	status = "disabled";
+};
+
+&tmu {
+	status = "disabled";
 };
 
 &iomuxc {
