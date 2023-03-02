@@ -25,6 +25,17 @@
 #include "remoteproc_internal.h"
 #include "remoteproc_elf_helpers.h"
 
+#undef dev_dbg
+#undef dev_info
+#undef dev_warn
+#undef dev_notice
+
+#define dev_dbg dev_err
+#define dev_info dev_err
+#define dev_warn dev_err
+#define dev_notice dev_err
+
+
 /**
  * rproc_elf_sanity_check() - Sanity Check for ELF32/ELF64 firmware image
  * @rproc: the remote processor handle

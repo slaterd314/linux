@@ -25,6 +25,16 @@
 
 #include "remoteproc_internal.h"
 
+#undef dev_dbg
+#undef dev_info
+#undef dev_warn
+#undef dev_notice
+
+#define dev_dbg dev_err
+#define dev_info dev_err
+#define dev_warn dev_err
+#define dev_notice dev_err
+
 #define IMX7D_SRC_SCR			0x0C
 #define IMX7D_ENABLE_M4			BIT(3)
 #define IMX7D_SW_M4P_RST		BIT(2)
@@ -880,6 +890,7 @@ static int imx_rproc_addr_init(struct imx_rproc *priv,
 		struct resource res;
 
 		node = of_parse_phandle(np, "memory-region", a);
+		dev_dbg(dev, "remap optional address: %s", node->name);
 		/* Not map vdevbuffer, vdevring region */
 		if (!strncmp(node->name, "vdev", strlen("vdev"))) {
 			of_node_put(node);

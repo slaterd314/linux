@@ -45,6 +45,17 @@
 
 #define HIGH_BITS_MASK 0xFFFFFFFF00000000ULL
 
+#undef dev_dbg
+#undef dev_info
+#undef dev_warn
+#undef dev_notice
+
+#define dev_dbg dev_err
+#define dev_info dev_err
+#define dev_warn dev_err
+#define dev_notice dev_err
+
+
 static DEFINE_MUTEX(rproc_list_mutex);
 static LIST_HEAD(rproc_list);
 static struct notifier_block rproc_panic_nb;

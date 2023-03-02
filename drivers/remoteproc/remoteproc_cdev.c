@@ -18,6 +18,17 @@
 #define NUM_RPROC_DEVICES	64
 static dev_t rproc_major;
 
+#undef dev_dbg
+#undef dev_info
+#undef dev_warn
+#undef dev_notice
+
+#define dev_dbg dev_err
+#define dev_info dev_err
+#define dev_warn dev_err
+#define dev_notice dev_err
+
+
 static ssize_t rproc_cdev_write(struct file *filp, const char __user *buf, size_t len, loff_t *pos)
 {
 	struct rproc *rproc = container_of(filp->f_inode->i_cdev, struct rproc, cdev);
