@@ -99,7 +99,7 @@ static int mfrc522_spi_probe(struct spi_device *spi)
 		return PTR_ERR(regmap);
 	}
 
-	return mfrc522_core_probe(&spi->dev, regmap);
+	return mfrc522_core_probe(&spi->dev, regmap, spi->irq);
 }
 
 static void mfrc522_spi_remove(struct spi_device *spi)

@@ -7,6 +7,7 @@
 #define MFRC522_FIFO_SIZE             64U
 #define MFRC522_FIFO_FLUSH            0x80
 #define MFRC522_FIFO_LEVEL_MASK       0x7F
+#define MFRC522_IRQ_STATUS_MASK       0x7F
 
 // MFRC522 Register Map (see datasheet Table 6.1 / Table 31)
 // Page 0: Command and Status

@@ -242,7 +242,7 @@ static int mfrc522_uart_probe(struct serdev_device *serdev)
 		return PTR_ERR(regmap);
 	}
 
-	return mfrc522_core_probe(dev, regmap);
+	return mfrc522_core_probe(dev, regmap, 0);
 }
 
 static void mfrc522_uart_remove(struct serdev_device *serdev)

@@ -3,6 +3,7 @@ obj-$(CONFIG_MFRC522)     += core.o
 obj-$(CONFIG_MFRC522_SPI) += spi.o
 obj-$(CONFIG_MFRC522_I2C) += i2c.o
 obj-$(CONFIG_MFRC522_UART)+= uart.o
+obj-$(CONFIG_MFRC522_KUNIT_TEST) += core_test.o
 
 # SPDX-License-Identifier: GPL-2.0-only
 

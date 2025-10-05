@@ -132,7 +132,7 @@ static int mfrc522_i2c_probe(struct i2c_client *client)
 		return PTR_ERR(regmap);
 	}
 
-	return mfrc522_core_probe(&client->dev, regmap);
+	return mfrc522_core_probe(&client->dev, regmap, client->irq);
 }
 
 static void mfrc522_i2c_remove(struct i2c_client *client)
