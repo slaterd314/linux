@@ -1,0 +1,46 @@
+# Kconfig
+config MFRC522
+    tristate "MFRC522 NFC Reader support"
+    depends on SPI || I2C || SERIAL_DEV_BUS || COMPILE_TEST
+    select CRC7
+    help
+      Support for the NXP MFRC522 NFC reader chip.
+      This driver provides access to the MFRC522 via SPI, I2C, or UART.
+      It supports optional reset GPIO, power management, and debug instrumentation.
+      To compile this driver as a module, choose M here: the module will be called mfrc522.
+
+config MFRC522_SPI
+    tristate "MFRC522 SPI bus support"
+    depends on MFRC522 && SPI
+    help
+      SPI bus front-end for MFRC522 driver.
+
+config MFRC522_I2C
+    tristate "MFRC522 I2C bus support"
+    depends on MFRC522 && I2C
+    help
+      I2C bus front-end for MFRC522 driver.
+
+config MFRC522_UART
+    tristate "MFRC522 UART bus support"
+    depends on MFRC522 && SERIAL_DEV_BUS
+    help
+      UART bus front-end for MFRC522 driver.
+
+config MFRC522_DEBUG
+    bool "Enable debug instrumentation for MFRC522"
+    depends on MFRC522
+    help
+      Enable verbose debug output for MFRC522 driver.
+
+config MFRC522_PM
+    bool "Enable runtime power management for MFRC522"
+    depends on MFRC522
+    help
+      Enable support for runtime PM and suspend/resume integration.
+
+config MFRC522_RESET_GPIO
+    bool "Enable reset GPIO support for MFRC522"
+    depends on MFRC522 && GPIOLIB
+    help
+      Enable optional reset GPIO handling for MFRC522.

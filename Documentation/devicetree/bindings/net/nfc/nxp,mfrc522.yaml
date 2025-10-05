@@ -1,0 +1,69 @@
+# nxp,mfrc522.yaml
+$id: http://devicetree.org/schemas/net/nfc/nxp,mfrc522.yaml#
+$schema: "http://devicetree.org/meta-schemas/core.yaml#"
+title: NXP MFRC522 NFC Reader
+
+maintainers:
+  - name: "Daniel R. Slater"
+    email: "slaterd314@gmail.com"
+
+description: |-
+  MFRC522 is an NFC reader IC from NXP supporting ISO/IEC 14443 A/MIFARE cards.
+  It supports SPI, I2C, and UART interfaces.
+
+properties:
+  compatible:
+    enum:
+      - nxp,mfrc522
+
+  reg:
+    maxItems: 1
+    description: Address of the device on the bus (chip-select, I2C address, UART port).
+
+  spi-max-frequency:
+    description: Maximum SPI clock frequency in Hz.
+
+  reset-gpios:
+    description: Optional GPIO used to reset the device via NRSTPD.
+
+  interrupts:
+    description: Optional interrupt line.
+
+required:
+  - compatible
+  - reg
+
+examples:
+  - |
+    spi {
+        #address-cells = <1>;
+        #size-cells = <0>;
+
+        mfrc522@0 {
+            compatible = "nxp,mfrc522";
+            reg = <0>;
+            spi-max-frequency = <10000000>;
+            reset-gpios = <&gpio1 5 GPIO_ACTIVE_LOW>;
+        };
+    };
+
+  - |
+    i2c {
+        #address-cells = <1>;
+        #size-cells = <0>;
+
+        mfrc522@28 {
+            compatible = "nxp,mfrc522";
+            reg = <0x28>;
+            reset-gpios = <&gpio2 3 GPIO_ACTIVE_LOW>;
+        };
+    };
+
+  - |
+    serial {
+        mfrc522@0 {
+            compatible = "nxp,mfrc522";
+            reg = <0>;
+            reset-gpios = <&gpio3 7 GPIO_ACTIVE_LOW>;
+        };
+    };
